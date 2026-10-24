@@ -1655,10 +1655,23 @@ fn monitor_events() {
     .join()
     .unwrap();
     let _ = std::fs::remove_dir_all(&dir);
+    // Expiry times run between nft's echo and the monitored events.
     let no_gen = |s: &str| -> Vec<String> {
         s.lines()
             .filter(|l| !l.starts_with("# new generation"))
-            .map(str::to_owned)
+            .map(|l| {
+                let w: Vec<&str> = l.split(' ').collect();
+                (0..w.len())
+                    .map(|i| {
+                        if i > 0 && w[i - 1] == "expires" {
+                            "X"
+                        } else {
+                            w[i]
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
             .collect()
     };
     let got_text = got.join("\n");
@@ -1769,7 +1782,9 @@ fn options() {
 }
 
 /// `monitor` prints ruleset changes like `nft monitor`, both running at
-/// the same time while the ruleset changes.
+/// the same time while the ruleset changes. On some kernels nft crashes on
+/// the deletion of a flowtable without devices: then only what it printed
+/// before is compared.
 #[test]
 fn monitor_cli() {
     let rs = env!("CARGO_BIN_EXE_nfcrt");
@@ -1801,7 +1816,10 @@ fn monitor_cli() {
              nft flush ruleset\n\
              wait\n\
              echo '=== {m}'\n\
-             diff <(norm a) <(norm b) && echo same\n"
+             if grep -q 'dumped core' a; then\n\
+             n=$(($(wc -l < a) - 1)); echo \"nft {m} crashed after $n lines\" >&2\n\
+             diff <(norm a | head -n $n) <(norm b | head -n $n) && echo same\n\
+             else diff <(norm a) <(norm b) && echo same; fi\n"
         ));
     }
     let out = script_in_netns(script);
