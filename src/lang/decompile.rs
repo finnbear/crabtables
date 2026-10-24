@@ -971,7 +971,7 @@ fn elements(
         out.push(el);
     }
     // Concatenated intervals are listed in the kernel's (insertion) order.
-    if !(s.flags & NFT_SET_INTERVAL != 0 && comps.len() > 1) && !keep_order {
+    if !(keep_order || s.flags & NFT_SET_INTERVAL != 0 && comps.len() > 1) {
         // (Stable: values without a numeric key keep the kernel's order.)
         out.sort_by_cached_key(sort_key);
     }

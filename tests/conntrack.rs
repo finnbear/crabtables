@@ -573,6 +573,7 @@ fn accounting_and_directions() {
                 .build(),
             rule("out")
                 .match_eq(Field::UdpDport, 7011u16)
+                .match_cmp(ct(CtKey::Pkts, Some(CtDir::Original)), CmpOp::Gt, 1u64)
                 .match_cmp(ct(CtKey::Expiration, None), CmpOp::Gt, 1000u32)
                 .counter()
                 .comment("expiring")
@@ -589,7 +590,9 @@ fn accounting_and_directions() {
     assert_eq!(counter(&mut s, "out", "after5"), 5);
     // 128 bytes per packet (headers included): only the 10th sees 1280.
     assert_eq!(counter(&mut s, "out", "bytes"), 1);
-    // The first packet's connection is not confirmed yet: no expiration.
+    // The first packet's connection is not confirmed yet, so its timeout is
+    // still relative and the kernel's expiration is garbage: 0, or a large
+    // value within ~5 min of boot (before jiffies wrap). Skip it.
     assert_eq!(counter(&mut s, "out", "expiring"), 9);
     let ct = conntrack(&["-L", "-p", "udp", "--dport", "7011"]);
     assert!(ct.contains("packets=10 bytes=1280"), "{ct}");

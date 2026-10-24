@@ -94,7 +94,7 @@ fn compare(cmds: &[&str], files: &[(&str, &str)]) {
             let mut rest = s;
             while let Some(i) = rest.find("/nfcrt-compat-") {
                 r.push_str(&rest[..i]);
-                rest = rest[i..].trim_start_matches(|c: char| c != '/' || false);
+                rest = rest[i..].trim_start_matches(|c: char| c != '/');
                 rest = &rest[1..];
                 rest = rest.trim_start_matches(|c: char| c != '/');
                 r.push_str("/DIR");
