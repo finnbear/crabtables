@@ -1,0 +1,262 @@
+# Constructs from the nftables wiki (Basic operation, Advanced data structures).
+define ntp_servers = { 84.77.40.132, 176.31.53.99, 81.19.96.148, 138.100.62.8 }
+define CDN_EDGE = {
+    192.168.1.1,
+    192.168.1.2,
+    10.0.0.0/8
+}
+define CDN_MONITORS = {
+    192.168.1.10,
+    192.168.1.20
+}
+define CDN = {
+    $CDN_EDGE,
+    $CDN_MONITORS
+}
+
+table ip filter {
+	counter https-traffic { }
+	counter http-traffic { }
+	counter foo-counter { }
+	quota http-quota { over 25 mbytes }
+	quota ssh-quota { 10 kbytes }
+	synproxy https-synproxy {
+		mss 1460
+		wscale 7
+		timestamp sack-perm
+	}
+	synproxy other-synproxy {
+		mss 1460
+		wscale 5
+	}
+	map ports { type inet_service : quota; elements = { 80 : "http-quota", 22 : "ssh-quota" } }
+	map whitelist { type ipv4_addr . inet_service : verdict; elements = { 1.2.3.4 . 22 : accept } }
+	map myMap { type ipv4_addr . ipv4_addr : verdict; }
+	map mydict { type ipv4_addr : verdict; elements = { 192.168.0.10 : drop, 192.168.0.11 : accept } }
+	set blackhole { type ipv4_addr; comment "drop all packets from these hosts"; elements = { 192.168.3.4, 192.168.1.4 } }
+	set ports2 { type inet_service; timeout 3h45s; }
+	set flags_set { type ipv4_addr; flags constant, interval; }
+	set daddrs { type ipv4_addr; flags timeout; elements = { 192.168.1.1 timeout 10s, 192.168.1.2 timeout 30s } }
+	set saddrs { type ipv4_addr; size 2; }
+	set myset { type inet_service; flags timeout,dynamic; }
+	set myset2 { type ipv4_addr; }
+	set my_ssh_ratelimit { type ipv4_addr; timeout 60s; flags dynamic; }
+	set my_connlimit { type ipv4_addr; size 65535; flags dynamic; }
+	chain input {
+		type filter hook input priority 0; policy accept;
+		ip daddr 192.168.0.1-192.168.0.250 drop
+		ip saddr { 192.168.1.1-192.168.1.200, 192.168.2.1-192.168.2.200 } drop
+		ip saddr . ip daddr . ip protocol { 1.1.1.1 . 2.2.2.2 . tcp, 1.1.1.1 . 3.3.3.3 . udp } counter accept
+		ip saddr . tcp dport vmap @whitelist
+		ip saddr and 255.255.255.0 . ip daddr and 255.255.255.0 vmap { 10.10.10.0 . 10.10.20.0 : accept }
+		ip saddr and 255.255.255.0 . ip saddr and 255.255.255.0 vmap @myMap
+		ip saddr $ntp_servers counter
+		tcp dport { http, https } ip saddr $CDN accept
+		tcp dport != 22
+		tcp dport >= 1024
+		tcp dport eq 22
+		tcp dport ne 22
+		tcp dport lt 22
+		tcp dport gt 22
+		tcp dport le 22
+		tcp dport ge 22
+		ip saddr @blackhole drop
+		ip saddr vmap @mydict
+		ip protocol vmap { tcp : jump tcp-chain, udp : jump udp-chain, icmp : jump icmp-chain }
+		set update tcp dport timeout 60s @myset
+		set add ip saddr @myset2
+		ct state new tcp dport 22 update @my_ssh_ratelimit { ip saddr limit rate 3/minute } accept
+		ct state established,related counter accept
+		ct state new tcp dport 22 counter accept
+	}
+	chain output {
+		type filter hook output priority 0; policy accept;
+		ip daddr 8.8.8.8 counter
+		tcp dport ssh counter
+		tcp dport { 22, 23 } counter
+		ip daddr != @blackhole accept
+		tcp dport https counter name https-traffic
+		counter name tcp dport map { https : "https-traffic", 80 : "http-traffic", 25 : "foo-counter", 50 : "foo-counter", 107 : "foo-counter" }
+		quota name tcp dport map @ports
+		ct state new add @my_connlimit { ip saddr ct count over 20 } counter drop
+	}
+	chain forward {
+		type filter hook forward priority filter; policy accept;
+		ip daddr vmap { 192.168.1.1-192.168.1.200 : jump chain-dmz, 192.168.2.1-192.168.20.250 : jump chain-desktop }
+		iif . oif vmap { eth0 . eth1 : accept }
+		ct state invalid,untracked synproxy name ip saddr map { 192.168.1.0/24 : "https-synproxy", 192.168.2.0/24 : "other-synproxy" }
+	}
+	chain trace_chain {
+		type filter hook prerouting priority -301;
+		meta nftrace set 1
+		ip protocol tcp meta nftrace set 1
+	}
+	chain INPUT {
+		tcp dport 80 meter http1 { tcp dport . ip saddr limit rate over 200/second } counter drop
+		tcp dport 80 meter http2 { tcp dport . ip saddr timeout 3s limit rate over 200 kbytes/second burst 1 mbytes } counter drop
+		tcp dport 80 meter http3 { ip saddr and 255.255.255.0 limit rate 200/second } counter drop
+	}
+	chain tcp-chain { counter; }
+	chain udp-chain { counter; }
+	chain icmp-chain { counter; }
+	chain chain-dmz { }
+	chain chain-desktop { }
+}
+table ip nat {
+	map porttoip { type inet_service: ipv4_addr; elements = { 80 : 192.168.1.100, 8888 : 192.168.1.101 } }
+	chain prerouting {
+		type nat hook prerouting priority -100;
+		dnat to ip saddr . tcp dport map { 1.1.1.1 . 80 : 192.168.1.100, 2.2.2.2 . 8888 : 192.168.1.101 }
+		dnat to tcp dport map { 80 : 192.168.1.100, 8888 : 192.168.1.101 }
+	}
+	chain postrouting {
+		type nat hook postrouting priority 100;
+		snat to tcp dport map @porttoip
+	}
+}
+table ip t {
+	chain c {
+		mark set numgen inc mod 4 offset 3
+		mark set numgen random mod 50 offset 20
+		mark set numgen inc mod 100
+		mark set jhash ip saddr mod 2
+		mark set jhash ip saddr . tcp dport mod 2
+		mark set jhash ip saddr . tcp dport . iiftype mod 2
+		tcp dport set tcp sport
+		ip dscp set 42
+	}
+}
+table inet fmytable {
+	set myset {
+		typeof ip daddr . tcp dport
+		counter
+		elements = { 1.1.1.4 . 22 counter packets 0 bytes 0,
+			     1.1.1.5 . 23 counter packets 0 bytes 0,
+			     1.1.1.6 . 24 counter packets 0 bytes 0 }
+	}
+}
+table inet mytable {
+	set myset {
+		type ipv4_addr . ipv4_addr
+		flags interval
+		elements = { 192.168.0.0/16 . 172.16.0.0/25,
+			     10.0.0.0/30 . 192.168.1.0/24,
+		}
+	}
+	set s1 {
+		typeof osf name
+		elements = { "Linux" }
+	}
+	set s2 {
+		typeof vlan id
+		elements = { 2, 3, 103 }
+	}
+	set s3 {
+		typeof ip daddr
+		elements = { 1.1.1.1 }
+	}
+	set s {
+		typeof ip saddr
+		counter
+		elements = { 1.1.1.1 counter packets 0 bytes 0, 1.1.1.2 counter packets 0 bytes 0 }
+	}
+	set merged {
+		typeof ip saddr
+		flags interval
+		auto-merge
+		elements = { 10.0.0.1, 10.0.0.2, 10.0.0.3, 10.0.0.0/8, }
+	}
+	chain mychain {
+		ip saddr . ip daddr @myset counter accept
+	}
+}
+table inet secmark_map_demo {
+	map secmapping {
+		type inet_service : secmark
+	}
+	chain IN {
+		type filter hook input priority filter;
+		meta secmark set tcp dport map @secmapping
+	}
+}
+table inet stateful_ftp {
+	ct helper ftp-standard {
+		type "ftp" protocol tcp;
+	}
+	chain PRE {
+		type filter hook prerouting priority filter;
+		tcp dport 21 ct helper set "ftp-standard"
+	}
+	chain IN {
+		type filter hook input priority filter; policy drop;
+		tcp dport 21 ct state new,established accept
+		ct helper "ftp" accept
+		ct state related ip daddr 1.2.3.4 ct helper "ftp" tcp dport { 1024-65535 } accept
+	}
+}
+table inet ct_timeout_demo {
+	ct timeout agressive-tcp {
+		l3proto ip;
+		protocol tcp;
+		policy = {established: 100, close_wait: 4, close: 4}
+	}
+	chain output {
+		tcp dport 8888 ct timeout set "agressive-tcp"
+	}
+}
+table ct_expect_demo {
+	ct expectation e_pgsql {
+		protocol tcp
+		dport 5432
+		timeout 1h
+		size 12
+		l3proto ip
+	}
+	chain input {
+		type filter hook input priority filter;
+		ct state new tcp dport 8888 ct expectation set "e_pgsql"
+		ct state established,related counter accept
+	}
+}
+table inet foo {
+	quota example { over 100 mbytes used 0 bytes }
+	quota q_until_sip { until 100 mbytes used 0 bytes }
+	quota q_over_http { over  500 mbytes ; comment "cap http (but not https)" ; }
+	limit lim_400ppm { rate 400/minute ; comment "use to limit incoming icmp" ; }
+	limit lim_1kbps  { rate over 1024 bytes/second burst 512 bytes ; comment "use to limit incoming smtp" ; }
+	counter cnt_http {
+		comment "count both http and https packets"
+	}
+	chain dropafterquota {
+		type filter hook postrouting priority 0; policy accept;
+		udp dport 5060 quota name "example" drop
+		udp dport 5060 quota until 100 mbytes accept
+		meta l4proto icmp limit name "lim_400ppm" accept
+		tcp dport 25 limit name "lim_1kbps" accept
+		tcp dport 22 ct count 10 accept
+		tcp dport 80 counter name cnt_http
+	}
+}
+table ip anon_synproxy_demo {
+	chain PRE {
+		type filter hook prerouting priority raw; policy accept;
+		tcp dport 8888 tcp flags syn notrack
+	}
+	chain IN {
+		type filter hook input priority filter; policy accept;
+		tcp dport 8888 ct state invalid,untracked synproxy mss 1460 wscale 7 timestamp sack-perm
+		ct state invalid drop
+	}
+}
+table inet x {
+	flowtable f {
+		hook ingress priority 0
+		devices = { eth0, eth1 }
+	}
+	chain forward {
+		type filter hook forward priority 0; policy drop;
+		tcp dport { 80, 443 } flow add @f counter packets 0 bytes 0
+		ct state vmap { established : accept, related : accept, invalid : drop }
+		iifname eth0 counter accept
+	}
+}

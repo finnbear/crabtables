@@ -1,0 +1,18 @@
+add table ip t
+add table ip t2 { flags dormant; comment "x"; }
+add chain ip t c { type filter hook input priority 0; policy drop; comment "cc"; }
+add chain ip t r
+add table netdev t3
+add chain netdev t3 ing { type filter hook ingress device lo priority 0; }
+add set ip t s { type ipv4_addr; flags interval,timeout; timeout 10s; size 100; elements = { 1.2.3.0/24, 5.5.5.5 } }
+add element ip t s { 9.9.9.9 timeout 5s comment "e" }
+add map ip t m { typeof ip saddr : verdict; }
+add element ip t m { 1.1.1.1 : jump r }
+add rule ip t c ip saddr { 1.1.1.1, 2.2.2.2 } counter accept comment "rr"
+add rule ip t c ip saddr @s jump r
+add counter ip t cnt { packets 5 bytes 6 }
+add quota ip t q { 100 mbytes }
+add limit ip t l { rate 10/second }
+add ct helper ip t h { type "ftp" protocol tcp; }
+add flowtable ip t f { hook ingress priority 0; devices = { lo }; }
+add set ip t s3 { type ipv4_addr; }

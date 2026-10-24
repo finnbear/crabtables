@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint, docs and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo doc --workspace --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - run: cargo test --workspace --lib --all-features
+      - run: cargo test --workspace --doc --all-features
+      - name: Check constants against the kernel UAPI headers
+        run: python3 scripts/check-constants.py
+
+  msrv:
+    name: MSRV (1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+      - run: cargo build --workspace --all-features --all-targets
+
+  integration:
+    # The integration tests talk to the kernel: they need root, network
+    # namespaces and the nft / conntrack / ip tools. Every test runs in its
+    # own network namespace. A privileged Debian trixie container provides
+    # nftables 1.1.x; the kernel (and its modules, loaded on demand) is the
+    # runner's. Tests of features newer than the running kernel are skipped.
+    name: Integration tests (kernel)
+    runs-on: ubuntu-latest
+    container:
+      image: rust:1-trixie
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq nftables conntrack iproute2 python3 netbase >/dev/null
+      - name: Environment
+        run: |
+          uname -a
+          nft --version
+          conntrack --version
+          cargo --version
+      - name: Build tests
+        run: cargo test --workspace --all-features --no-run
+      - name: Run tests
+        run: cargo test --workspace --all-features
+      - name: Benchmark against nft
+        run: |
+          cargo build --release -p nfcrt
+          cargo build --release --features lang --example bench
+          apt-get install -y -qq libnftables1 >/dev/null
+          unshare -n target/release/examples/bench

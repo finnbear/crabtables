@@ -1,0 +1,41 @@
+table ip t {
+ synproxy sp { mss 1460; wscale 7; }
+ ct expectation e { protocol tcp; dport 1; timeout 1m; size 1; l3proto ip; }
+ ct timeout to { protocol udp; l3proto ip; policy = { replied: 10 }; }
+ limit l { rate 1/second; comment "c"; }
+ ct helper h { type "ftp" protocol tcp; }
+ quota q { 1000 bytes used 10 bytes; }
+ counter c { comment "cc"; }
+ counter c2 { packets 1 bytes 2; }
+ set z { type ipv4_addr; size 10; flags interval,timeout; timeout 1h; gc-interval 2h; auto-merge; counter; comment "sc"; policy memory; elements = { 1.1.1.1 } }
+ set y { type ipv4_addr; flags constant; elements = { 1.1.1.1 } }
+ map w { type ipv4_addr : verdict; flags dynamic; size 5; }
+ chain a { type filter hook input priority -5; }
+ chain b { type filter hook input priority -100; }
+ chain b2 { type filter hook input priority 100; }
+ chain b3 { type filter hook output priority -200; }
+ chain b4 { type filter hook input priority -310; }
+ chain b5 { type nat hook postrouting priority 105; }
+ chain b6 { type filter hook forward priority 50; }
+ chain b7 { type filter hook forward priority -150; }
+ chain b8 { type filter hook input priority 25; }
+ chain r {
+  ip protocol tcp tcp dport 22 accept
+  ip frag-off & 0x1fff != 0 drop
+  ip hdrlength != 5 drop
+  tcp flags & (syn|rst) == syn|rst drop
+  tcp flags syn / syn,ack drop
+  ip dscp != { cs1, ef } accept
+  meta mark set meta mark | 0x10
+  meta mark set meta mark & 0xff
+  meta mark set meta mark ^ 0x3
+  meta mark set meta mark << 2
+  ct mark set ct mark and 0xff or 0x1000
+  ip ttl set 10
+  tcp dport set 80
+ }
+}
+table bridge br {
+ chain a { type filter hook input priority -200; }
+ chain bb { type filter hook forward priority 100; }
+}

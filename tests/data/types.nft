@@ -1,0 +1,74 @@
+table inet t {
+ chain c {
+  meta protocol 0x1234 accept
+  meta protocol ip accept
+  icmp type 99 accept
+  icmp type { 0, 3, 8 } accept
+  ct state 0x30 accept
+  ct state { new, established } accept
+  ip dscp 7 accept
+  ct mark 0x5 accept
+  meta mark 5 accept
+  meta priority 1:2 accept
+  meta priority 0x10002 accept
+  meta iif lo accept
+  meta iifname "lo" accept
+  meta oiftype ether accept
+  meta cgroup 5 accept
+  meta day 3 accept
+  meta hour "17:00" accept
+  meta pkttype 7 accept
+  meta iifgroup 5 accept
+  meta rtclassid 5 accept
+  tcp flags 0x40 accept
+  tcp flags { syn, ack } accept
+  tcp flags syn,ack accept
+  tcp flags & (fin|syn) == fin|syn accept
+  ct status 0x100 accept
+  ct direction 1 accept
+  meta nfproto 7 accept
+  ip protocol 253 accept
+  ip protocol 6 accept
+  meta length 1000 accept
+  ct expiration 90 accept
+  ct zone 5 accept
+  ip ttl 0x10 accept
+  ip id 0x1234 accept
+  tcp sequence 100 accept
+  ip ecn ce accept
+  fib daddr type 9 accept
+  ct label 5 accept
+  meta l4proto 200 accept
+  tcp dport ssh accept
+  udp dport 0x35 accept
+  ether type 0x88cc accept
+  meta skuid 1000 accept
+  meta skgid root accept
+  ct bytes 100 accept
+  ct count 3 accept
+  ip saddr 1.2.3.4/32 accept
+  ip saddr 0.0.0.0/0 accept
+  ip6 saddr ::/0 accept
+  ip6 daddr fe80::/10 accept
+  ip6 daddr ::ffff:1.2.3.4 accept
+  ether saddr 00:01:02:03:04:05 accept
+  meta time 1700000000 accept
+  ct helper "ftp" accept
+  socket mark 0x10 accept
+  tcp option maxseg size 1000 accept
+  exthdr frag exists accept
+  @nh,0,8 0x45 accept
+  @ll,0,16 1 accept
+  meta mark set 0xffffffff
+  ct mark set ct mark and 0xff or 0x1000
+  ip saddr != { 1.1.1.1, 2.2.2.2 } accept
+  ip daddr 1.1.1.1-1.1.1.100 accept
+  ip daddr != 1.1.1.1-1.1.1.100 accept
+  meta mark & 0xff0000 == 0x10000 accept
+  meta mark & 0xff == 0 accept
+  meta mark != 0 accept
+  ip length > 1000 accept
+  ip length <= 1000 accept
+ }
+}
+table arp a { chain c { arp operation 99 accept; arp operation reply accept; arp saddr ip 1.2.3.4 accept; }; }

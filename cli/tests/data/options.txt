@@ -1,0 +1,54 @@
+--foo
+-x
+-f
+-I
+-D
+-Dfoo
+-Dfoo=1 -c list ruleset
+--define foo=1 -c list ruleset
+--define=foo=1 -c list ruleset
+--debug
+-d bogus
+-d foo,bar
+-h
+--help
+--he
+-a
+--json=1
+list ruleset -a
+list ruleset -- -a
+-c -- list ruleset
+-nnn list ruleset
+-ffoo
+--file=/nonexist
+--includepath=/x -c list ruleset
+-d
+-dnetlink -c list ruleset
+--check
+-e
+
+--ech
+--n
+--numeric-p
+-I /nonexist -c list ruleset
+-I /etc/hosts -c list ruleset
+-q -c list ruleset
+-c add rule ip t c meta mark set -1
+-c add rule ip t c tcp dport { 1, 2 } -a
+-c add -- table x
+-c add -D a=1
+-c list -fx
+-a foo -c list ruleset
+-Dx=1 foo -c
+-d netlink foo -c
+--debug=netlink foo -c
+-f x foo -c
+-Ix foo -c
+-c list ruleset -
+-f /nonexist list ruleset
+--numeric-protocol --numeric-time --guid --reversedns --service --stateless --terse --handle --echo list ruleset
+-sa -c list ruleset
+--hand list ruleset
+-i list ruleset
+-f
+-D a=1 -f /nonexist

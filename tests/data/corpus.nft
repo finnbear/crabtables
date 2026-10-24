@@ -1,0 +1,269 @@
+table inet filter {
+	counter cnt_ssh {
+		packets 5 bytes 300
+	}
+
+	quota q1 {
+		over 100 mbytes used 0 bytes
+	}
+
+	limit lim1 {
+		rate 100/second burst 10 packets
+	}
+
+	ct helper ftp-std {
+		type "ftp" protocol tcp
+		l3proto ip
+	}
+
+	ct timeout tcp-short {
+		protocol tcp
+		l3proto ip
+		policy = { established : 100, close : 4 }
+	}
+
+	ct expectation e1 {
+		protocol tcp
+		dport 5000
+		timeout 1h
+		size 12
+		l3proto ip
+	}
+
+	set blocklist {
+		type ipv4_addr
+		flags interval
+		auto-merge
+		elements = { 10.0.0.0/8, 192.168.0.1-192.168.0.100 }
+	}
+
+	set tmo {
+		type ipv4_addr . inet_service
+		flags timeout
+		timeout 1h
+		elements = { 1.2.3.4 . 80 timeout 30m }
+	}
+
+	set dyn6 {
+		type ipv6_addr
+		size 1024
+		flags dynamic
+	}
+
+	set concat_iv {
+		type ipv4_addr . inet_service
+		flags interval
+		elements = { 10.0.0.0/24 . 80-90 }
+	}
+
+	set withctr {
+		type ipv4_addr
+		counter
+		elements = { 9.9.9.9 }
+	}
+
+	set elemcomment {
+		type ether_addr
+		elements = { 00:11:22:33:44:55 comment "hello" }
+	}
+
+	set typeofset {
+		typeof ip saddr . meta mark
+		elements = { 1.2.3.4 . 0x00000001 }
+	}
+
+	map portmap {
+		type inet_service : verdict
+		elements = { 22 : jump ssh, 80 : accept }
+	}
+
+	map ivmap {
+		type ipv4_addr : verdict
+		flags interval
+		elements = { 10.1.0.0/16 : jump ssh, 10.2.0.0-10.2.255.254 : drop, 255.255.255.0/24 : accept }
+	}
+
+	map cntmap {
+		type ipv4_addr : counter
+		elements = { 1.1.1.1 : "cnt_ssh" }
+	}
+
+	map catchmap {
+		type ipv4_addr : verdict
+		elements = { 1.2.3.4 : accept, * : drop }
+	}
+
+	map markmap {
+		type ipv4_addr : mark
+		elements = { 1.2.3.4 : 0x00000042 }
+	}
+
+	flowtable ft {
+		hook ingress priority filter
+		devices = { lo }
+	}
+
+	chain ssh {
+		counter packets 0 bytes 0 accept
+	}
+
+	chain input {
+		type filter hook input priority filter; policy accept;
+		ct state established,related accept
+		ct state invalid drop
+		iifname "lo" accept
+		ip saddr @blocklist drop
+		tcp dport 22 jump ssh
+		tcp dport { 80, 443 } counter packets 0 bytes 0 accept
+		tcp dport vmap @portmap
+		ip saddr vmap @ivmap
+		ip saddr . tcp dport @tmo accept
+		ip saddr . tcp dport @concat_iv accept
+		ip saddr . meta mark @typeofset accept
+		@th,16,16 0x1234 counter packets 0 bytes 0
+		@nh,64,8 0x40 drop
+		@th,0,4 0x3 counter packets 0 bytes 0
+		meta mark 0x00000001 counter name "cnt_ssh"
+		counter name ip saddr map @cntmap
+		ip saddr vmap @catchmap
+		meta mark set ip saddr map @markmap
+		ip6 saddr @dyn6 drop
+		update @dyn6 { ip6 saddr limit rate over 10/second burst 5 packets } drop
+		add @tmo { ip saddr . tcp dport timeout 10s }
+		limit rate 5/minute burst 2 packets log prefix "rate " level warn flags all
+		limit rate over 1 mbytes/second burst 1000 bytes drop
+		ct count over 10 reject with tcp reset
+		ct count 5 accept
+		numgen inc mod 3 vmap { 0 : jump ssh, 1 : accept, 2 : drop }
+		meta mark set numgen random mod 10 offset 100
+		meta mark set jhash ip saddr mod 4 seed 0xdead
+		meta mark set symhash mod 2
+		log prefix "nflog: " group 5 snaplen 128 queue-threshold 10
+		quota over 1000 mbytes drop
+		quota name "q1" drop
+		limit name "lim1" accept
+		icmp type echo-request limit rate 1/second burst 5 packets accept
+		meta l4proto { tcp, udp } th dport 53 accept
+		tcp flags & (syn | ack) == syn counter packets 0 bytes 0
+		ip dscp 0x2e counter packets 0 bytes 0
+		ip ttl < 10 drop
+		tcp dport 1000-2000 drop
+		ip daddr != 10.0.0.0/8 counter packets 0 bytes 0
+		ip daddr 10.1.2.0/23 counter packets 0 bytes 0
+		ether saddr 00:11:22:33:44:55 drop
+		meta skuid 0 accept
+		fib saddr . iif oif missing drop
+		tcp option maxseg size 1460 counter packets 0 bytes 0
+		ct mark set 0x00000010
+		meta mark set ct mark
+		meta nftrace set 1
+		ip6 nexthdr ipv6-icmp accept
+		icmpv6 type { nd-neighbor-solicit, nd-router-advert } accept
+		meta pkttype broadcast drop
+		queue flags bypass to 3
+		queue to 4-7
+		counter packets 0 bytes 0 comment "a comment"
+		last used never
+		ip saddr 1.2.3.4 ip daddr 5.6.7.8 tcp sport 1 tcp dport 2 meta iifname "eth*" counter packets 0 bytes 0
+		ip6 saddr 2001:db8::/32 ip6 daddr ::1 drop
+		meta time "2026-01-01 00:00:00" - "2027-01-01 00:00:00" counter packets 0 bytes 0
+		meta day "Monday" meta hour "10:00" - "12:00" accept
+		socket transparent 1 accept
+		ct direction original ct original proto-dst 80 accept
+		ct original ip saddr 1.2.3.4 accept
+		ip protocol udp udp length 100 counter packets 0 bytes 0
+		tcp dport != { 1, 2, 3 } accept
+		ip saddr != @blocklist accept
+		tcp dport 9 jump { counter packets 0 bytes 0; ip saddr 1.1.1.1 drop; }
+		tcp dport 10 goto { ip saddr 2.2.2.2 accept; drop; }
+		reject with icmpx admin-prohibited
+	}
+
+	chain fwdc {
+		type filter hook forward priority filter + 10; policy drop;
+		ct helper set "ftp-std"
+		ct expectation set "e1"
+		meta l4proto tcp flow add @ft
+		goto ssh
+	}
+
+	chain out {
+		type filter hook output priority filter; policy accept;
+		ct timeout set "tcp-short"
+		rt mtu 1400 counter packets 0 bytes 0
+		tcp dport 80 tcp option maxseg size set 1400
+		ip dscp set cs1
+		ip ttl set 64
+		tcp dport 25 reject with icmp port-unreachable
+	}
+
+	chain pre {
+		type filter hook prerouting priority raw; policy accept;
+		notrack
+		ip daddr 1.2.3.4 tcp dport 80 tproxy ip to 127.0.0.1:1234
+		meta mark set numgen inc mod 2
+		meta priority set 1:2
+	}
+}
+table ip nat {
+	chain pre {
+		type nat hook prerouting priority dstnat; policy accept;
+		tcp dport 8080 dnat to 10.0.0.1:80
+		tcp dport 8081 dnat to 10.0.0.1-10.0.0.3:80-90
+	}
+
+	chain post {
+		type nat hook postrouting priority srcnat; policy accept;
+		oifname "eth0" masquerade
+		oifname "eth1" meta l4proto tcp masquerade to :1000-2000 random
+		ip saddr 10.0.0.0/8 tcp dport 80 snat to 1.2.3.4-1.2.3.10:1000-2000 random,persistent
+	}
+
+	chain out {
+		type nat hook output priority -100; policy accept;
+		tcp dport 25 redirect to :2525
+	}
+}
+table ip dupt {
+	chain c {
+		type filter hook output priority filter; policy accept;
+		ip daddr 1.2.3.4 dup to 127.0.0.2
+		ip daddr 1.2.3.5 dup to 127.0.0.2 device "lo"
+	}
+}
+table ip6 x {
+	chain c {
+		type filter hook forward priority filter; policy drop;
+		ip6 hoplimit 1 drop
+		exthdr frag exists drop
+	}
+}
+table bridge br {
+	chain c {
+		type filter hook forward priority filter; policy accept;
+		ether type ip counter packets 0 bytes 0
+		meta ibrname "br0" drop
+		vlan id 10 accept
+	}
+}
+table arp a {
+	chain c {
+		type filter hook input priority filter; policy accept;
+		arp operation request counter packets 0 bytes 0
+	}
+}
+table netdev nd {
+	chain ing {
+		type filter hook ingress device "lo" priority filter; policy accept;
+		ip saddr 1.1.1.1 drop
+		fwd to "lo"
+	}
+}
+table inet dormant {
+	comment "tc"
+	flags dormant
+
+	chain c {
+		comment "chain comment"
+	}
+}

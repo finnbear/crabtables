@@ -1,0 +1,103 @@
+table inet x {
+	synproxy sp {
+		mss 1460
+		wscale 7
+		timestamp sack-perm
+	}
+
+	chain in {
+		type filter hook input priority filter; policy accept;
+		osf name "Linux" counter
+		osf ttl skip version "Linux:3.0" drop
+		tcp flags syn tcp dport 80 synproxy mss 1460 wscale 7 timestamp sack-perm
+		tcp dport 81 synproxy name "sp"
+		ipsec in reqid 1 accept
+		ipsec in ip saddr 1.2.3.4 accept
+		queue flags bypass,fanout to 0-3
+		queue to numgen inc mod 4
+		ct label 1 accept
+		meta cpu 1 counter
+		meta cgroup 1 counter
+		meta iifgroup 1 counter
+		meta secpath exists accept
+		meta time > "2026-01-01 00:00:00" accept
+		ip6 nexthdr tcp tcp option sack-perm exists accept
+		sctp chunk init exists accept
+		sctp dport 1234 accept
+		dccp type request accept
+		ip option rr exists drop
+		exthdr hbh exists drop
+		frag more-fragments 1 drop
+		icmpv6 type echo-request reject with icmpv6 admin-prohibited
+		ip protocol tcp reject with icmp host-unreachable
+		meta l4proto tcp reject with tcp reset
+		ct status dnat accept
+		ct expiration < 5s accept
+		ct avgpkt 100 accept
+		ct bytes > 1000 accept
+		ct direction reply ct reply ip daddr 1.2.3.4 accept
+		ct id 1 accept
+		ip saddr & 0xff00ff00 == 0x01000100 accept
+		meta mark set meta mark & 0xffff0000 | 0x5
+		meta mark set meta mark >> 8
+		meta mark set meta mark << 2
+		udp checksum set 0
+		meta length 100-200 accept
+		meta protocol ip accept
+		meta pkttype host accept
+		meta iiftype ether accept
+		meta iifkind "veth" accept
+		meta sdif 0 accept
+		meta nfproto ipv6 accept
+		ip length > 1000 counter
+		ip version 4 accept
+		ip hdrlength 5 accept
+		ip frag-off & 0x1fff != 0 drop
+		ip6 flowlabel 5 accept
+		icmp code 1 accept
+		igmp type membership-query accept
+		tcp option mptcp subtype 1 accept
+		th sport 1-1023 accept
+		udplite dport 9 accept
+		ah spi 1 accept
+		esp spi 1 accept
+		comp cpi 1 accept
+		vlan id 1 accept
+		gre version 0 accept
+		ip saddr . ip daddr . tcp dport { 1.1.1.1 . 2.2.2.2 . 22 } accept
+		ip saddr { 1.1.1.0/24, 2.2.2.2-2.2.2.10 } accept
+		tcp dport { 1-10, 20-30 } counter
+		meta mark { 1, 2 } accept
+		ct state vmap { new : accept, established : drop }
+		meta mark set tcp dport map { 22 : 1, 80 : 2 }
+		tcp dport { 22, 23 } meta mark set 1 counter
+		ip daddr . tcp dport vmap { 1.1.1.1 . 22 : accept, 1.1.1.1 . 23 : drop }
+		fib daddr type local accept
+		fib saddr . mark oif lo accept
+		fib daddr oifname "lo" accept
+		ip saddr set 1.2.3.4
+		meta nftrace set 0
+		log level debug flags tcp sequence,options
+		log level audit
+		limit rate over 10/hour burst 1 packets drop
+		limit rate 1/day accept
+		limit rate 10 kbytes/second burst 100 kbytes accept
+		quota until 100 bytes accept
+		counter packets 1 bytes 2
+		socket mark 1 accept
+		socket wildcard 0 accept
+	}
+
+	chain out {
+		type filter hook output priority filter; policy accept;
+		rt ipsec exists accept
+		ct label set 1
+		ct event set new,destroy
+	}
+
+	chain pre {
+		type filter hook prerouting priority raw; policy accept;
+		ct zone set 5
+		ct zone 5 counter
+	}
+}

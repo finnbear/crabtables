@@ -1,0 +1,64 @@
+[package]
+name = "crabtables"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Claude Code", "Finn Bear"]
+description = "Pure-Rust nftables: atomic rule batches, sets and maps, counters, monitoring, NFLOG and NFQUEUE, sync or async, and optionally the nft language"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/finnbear/crabtables"
+documentation = "https://docs.rs/crabtables"
+readme = "README.md"
+keywords = ["nftables", "netfilter", "firewall", "netlink", "nfqueue"]
+categories = ["network-programming", "os::linux-apis"]
+exclude = [".github", "scripts"]
+
+[dependencies]
+libc = "0.2.191"
+netlink-sys = "0.9.0"
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+serde_json = { version = "1.0.154", optional = true }
+tokio = { version = "1.54.1", features = ["net", "rt", "time"], optional = true }
+
+[features]
+tokio = ["dep:tokio"]
+## Serialize/Deserialize for all data types.
+serde = ["dep:serde"]
+## JSON helpers (implies `serde`).
+json = ["serde", "dep:serde_json"]
+## The nftables language (`lang`): parser, compiler to batches, decompiler
+## and printer of nft syntax.
+lang = []
+## nft-compatible JSON (`nft -j`) for `lang` (input and output).
+lang_json = ["lang", "dep:serde_json", "serde_json/preserve_order"]
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["net", "rt", "rt-multi-thread", "macros", "time"] }
+
+[package.metadata.docs.rs]
+all-features = true
+# Linux only.
+targets = ["x86_64-unknown-linux-gnu"]
+
+[[test]]
+name = "lang_compile"
+required-features = ["lang"]
+
+[[test]]
+name = "lang_list"
+required-features = ["lang"]
+
+[[test]]
+name = "lang_json"
+required-features = ["lang_json"]
+
+[[example]]
+name = "bench"
+required-features = ["lang"]
+
+[[example]]
+name = "async_nflog"
+required-features = ["tokio"]
+
+[workspace]
+members = [".", "cli"]

@@ -1,0 +1,41 @@
+table inet t {
+	flags dormant,persist
+	comment "tc"
+	map m { type ipv4_addr : mark; comment "mc"; policy memory; size 7; flags interval,timeout; timeout 1h; gc-interval 10s; elements = { 1.1.1.1 : 0x1 } }
+	map om { type ipv4_addr : quota; elements = { 1.1.1.1 : "q" } }
+	quota q { 10 mbytes used 1 mbytes }
+	set ts { typeof ip saddr . tcp dport; flags interval; elements = { 1.1.1.0/24 . 1-10 } }
+	map tm { typeof ip saddr : meta mark; }
+	map dm { type ipv4_addr : interval ipv4_addr; flags interval; elements = { 1.1.1.1 : 2.2.2.2-2.2.2.3 } }
+	set ex { type ipv4_addr; counter; quota 1 mbytes; }
+	flowtable f { hook ingress priority filter + 5; devices = { d0, d1 }; counter; }
+	chain c { comment "cc"; type filter hook input priority 10; policy drop; }
+	chain d {
+		ip saddr 1.1.1.1 last used never
+		rt ip nexthop 1.1.1.1
+		quota until 10 mbytes used 1 mbytes
+		limit rate 10 bytes/second
+		log prefix "x" level emerg flags ip options
+		log flags tcp sequence,options flags skuid flags ether
+		ct zone set 3
+		snat ip to 1.1.1.1
+		tcp dport 1 dnat ip to 1.1.1.1:80
+		meta l4proto tcp dnat ip to 1.1.1.1:80 fully-random
+		masquerade random
+		tcp dport 2 redirect to :8080
+		tcp dport 3 tproxy ip to :80
+		jhash ip saddr mod 2 seed 0x1 offset 5 1
+		symhash mod 2 offset 3 1
+		numgen inc mod 2 offset 1 1
+		ipsec out spnum 1 ip6 daddr ::1
+		reject with tcp reset
+		reject with icmpv6 port-unreachable
+		update @tm { ip saddr : meta mark }
+		add @ex { ip saddr }
+		ct original ip6 saddr ::1
+		ether type vlan vlan id 5
+	}
+}
+table netdev n {
+ chain f { type filter hook ingress device d0 priority 0; fwd ip to 1.1.1.1 device d0; dup to d1; }
+ chain i { type filter hook ingress devices = { d0, d1 } priority 0; }; }
