@@ -7,7 +7,7 @@ authors = ["Claude Code", "Finn Bear"]
 description = "Pure-Rust nftables command line tool, compatible with nft (built on crabtables)"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/finnbear/crabtables"
-readme = "../README.md"
+readme = "README.md"
 keywords = ["nftables", "nft", "netfilter", "firewall"]
 categories = ["command-line-utilities", "network-programming"]
 
